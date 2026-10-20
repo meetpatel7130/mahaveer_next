@@ -4,7 +4,7 @@ import { useCompanies, useAddCompany, useUpdateCompany, useDeleteCompany } from 
 import { useUsers, useAddUser, useUpdateUser, useDeleteUser } from '../../hooks/useUsers';
 import { useCategories, useAddCategory, useUpdateCategory, useDeleteCategory } from '../../hooks/useCategories';
 import { useProducts, useAddProduct, useUpdateProduct, useDeleteProduct } from '../../hooks/useProducts';
-import { useQuotations, useAddQuotation } from '../../hooks/useQuotations';
+import { useQuotations, useAddQuotation, useUpdateQuotation } from '../../hooks/useQuotations';
 
 const DataContext = createContext(undefined);
 
@@ -58,11 +58,13 @@ export function DataProvider({ children }) {
 
   const { data: quotationsData, isLoading: quotationsLoading } = useQuotations({ params: quotationParams });
   const { mutate: addQuotationFn, isPending: addQuotationLoading } = useAddQuotation();
+  const { mutate: updateQuotationFn } = useUpdateQuotation();
   const quotations = quotationsData?.data || quotationsData?.data?.data || [];
   const quotationTotal = quotationsData?.pagination?.total ?? quotationsData?.data?.pagination?.total ?? 0;
   const quotationPages = quotationsData?.pagination?.totalPages ?? quotationsData?.data?.pagination?.totalPages ?? 1;
   const setQuotationFilter = (params) => setQuotationParams((previous) => ({ ...previous, ...params }));
   const addQuotation = (data, callbacks) => addQuotationFn(data, callbacks);
+  const updateQuotation = (id, data, callbacks) => updateQuotationFn({ id, data }, callbacks);
 
   return (
     <DataContext.Provider value={{
@@ -71,7 +73,7 @@ export function DataProvider({ children }) {
       usersLoading, companiesLoading, categoriesLoading, productsLoading, quotationsLoading, addQuotationLoading,
       addUser, updateUser, deleteUser, addCompany, updateCompany, deleteCompany,
       addCategory, updateCategory, deleteCategory, addProduct, updateProduct, deleteProduct,
-      setProductFilter, addQuotation, setQuotationFilter,
+      setProductFilter, addQuotation, updateQuotation, setQuotationFilter,
     }}>
       {children}
     </DataContext.Provider>

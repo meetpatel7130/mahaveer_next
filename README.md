@@ -1,4 +1,4 @@
-# Mahavir Hospitality
+# Mahaveer Hospitality 
 
 Next.js App Router migration of the existing React/Express application. The frontend and REST APIs run from this project, and MySQL is the only application database. The original `frontend` and `backend` folders remain as migration references.
 

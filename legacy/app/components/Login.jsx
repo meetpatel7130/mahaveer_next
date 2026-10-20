@@ -26,14 +26,14 @@ export default function Login() {
       </div> */}
 
       <div className="w-full max-w-md">
-        <div className="bg-card rounded-lg shadow-md p-6 sm:p-8 border border-border dark:shadow-[0_0_40px_rgba(192,192,192,0.15)] dark:border-primary/20">
+        <div className="rounded-lg shadow-md p-6 sm:p-8 border border-border dark:shadow-[0_0_40px_rgba(192,192,192,0.15)] dark:border-primary/20">
           <div className="flex justify-center mb-6">
-            <div className="w-14 h-14 sm:w-16 sm:h-16 bg-primary overflow-hidden rounded-full flex items-center justify-center dark:shadow-[0_0_20px_rgba(192,192,192,0.4)]">
-              <img src="/mahavirlogo.png" className="object-contain text-primary-foreground" alt="Mahavir Logo" />
+            <div className="w-14 h-14 sm:w-16 sm:h-16 overflow-hidden rounded-full flex items-center justify-center">
+              <img src="/logonew.png" className="object-contain text-primary-foreground" alt="Mahavir Logo" />
             </div>
           </div>
 
-          <h1 className="text-center mb-2 text-foreground dark:text-primary text-xl sm:text-2xl">Mahavir Hospitality</h1>
+          <h1 className="text-center mb-2 text-foreground dark:text-primary text-xl sm:text-2xl">Mahaveer Hospitality</h1>
           <p className="text-center text-muted-foreground mb-6 text-sm sm:text-base">Bill Quotation & Catalog System</p>
 
           <form onSubmit={handleSubmit} className="space-y-4">

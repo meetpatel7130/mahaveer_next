@@ -34,7 +34,7 @@ export default function AdminDashboard() {
                 {isSidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
               </button>
               <div>
-                <h1 className="text-lg sm:text-xl md:text-2xl text-foreground dark:text-primary">Mahavir Hospitality</h1>
+                <h1 className="text-lg sm:text-xl md:text-2xl text-foreground dark:text-primary">Mahaveer Hospitality</h1>
                 <p className="text-xs sm:text-sm text-muted-foreground">Welcome, {user?.fullName}</p>
               </div>
             </div>

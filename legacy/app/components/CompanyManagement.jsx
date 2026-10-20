@@ -158,7 +158,7 @@ export default function CompanyManagement() {
               {/* preview box */}
               {preview ? (
                 <div className="relative mb-2 w-full h-36 rounded-lg overflow-hidden border border-border dark:border-primary/20">
-                  <img src={preview} alt="preview" className="w-full h-full object-cover" />
+                  <img src={preview} alt="preview" className="w-full h-full object-contain" />
                   <button
                     type="button"
                     onClick={() => { setPreview(null); setFormData({ ...formData, image: null }); }}

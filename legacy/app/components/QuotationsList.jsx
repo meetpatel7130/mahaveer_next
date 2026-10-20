@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
-import { FileText, Download, Share2, Search, ChevronLeft, ChevronRight, Loader2, Wifi, WifiOff } from 'lucide-react';
+import { FileText, Download, Share2, Search, ChevronLeft, ChevronRight, Loader2, Wifi, WifiOff, Pencil, X, Save, Trash2, Plus } from 'lucide-react';
 import { generateQuotationPDF, generateQuotationPDFAsBase64 } from '../utils/pdfGenerator';
 import { useWhatsAppStatus, useSendWhatsAppQuotation } from '../../hooks/useWhatsApp';
-import { useFetchProductsByIds } from '../../hooks/useProducts';
+import { useFetchProductsByIds, useProducts } from '../../hooks/useProducts';
 import { toast } from 'sonner';
+import { DEFAULT_QUOTATION_TERMS, DEFAULT_SELECTED_QUOTATION_TERMS } from '../utils/quotationTerms';
 
 const defaultColumns = {
   product: true, size: true, innerPack: true, masterCarton: true,
@@ -30,6 +31,7 @@ export default function QuotationsList() {
     quotationPages,
     quotationParams,
     setQuotationFilter,
+    updateQuotation,
   } = useData();
 
   const isAdmin = user?.userType === 'admin';
@@ -45,6 +47,20 @@ export default function QuotationsList() {
   const [sharingId,    setSharingId]    = useState(null); // tracks which quotation is being shared
   const [expandedQuotationIds, setExpandedQuotationIds] = useState(() => new Set());
   const [productNamesById, setProductNamesById] = useState({});
+  const [editingQuotation, setEditingQuotation] = useState(null);
+  const [editForm, setEditForm] = useState(null);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [showAddProduct, setShowAddProduct] = useState(false);
+  const [productSearch, setProductSearch] = useState('');
+  const [selectedProduct, setSelectedProduct] = useState(null);
+  const [selectedSkuIndex, setSelectedSkuIndex] = useState('');
+  const productSearchParams = { page: 1, limit: 10, search: productSearch.trim() };
+  const { data: productSearchData, isLoading: isSearchingProducts, isError: productSearchFailed } = useProducts({
+    params: productSearchParams,
+    enabled: isAdmin && showAddProduct && productSearch.trim().length >= 2,
+    keepPrevious: false,
+  });
+  const productSuggestions = productSearchData?.products || productSearchData?.data?.products || [];
 
   const toggleProducts = (quotationId) => {
     setExpandedQuotationIds((previous) => {
@@ -52,6 +68,153 @@ export default function QuotationsList() {
       if (next.has(quotationId)) next.delete(quotationId);
       else next.add(quotationId);
       return next;
+    });
+  };
+
+  const handleEditQuotation = async (quotation) => {
+    const ids = [...new Set((quotation.products || []).map(getProductId).filter(Boolean))];
+    let productMap = {};
+    if (ids.length > 0) {
+      try {
+        const response = await fetchProductsByIdsAsync(ids);
+        productMap = response?.productMap || response?.data?.productMap || {};
+      } catch {
+        toast.error('Could not load product details. Please try again.');
+        return;
+      }
+    }
+
+    setEditingQuotation(quotation);
+    setShowAddProduct(false);
+    setProductSearch('');
+    setSelectedProduct(null);
+    setSelectedSkuIndex('');
+    setEditForm({
+      q_id: quotation.q_id || '',
+      clientName: quotation.clientName || '',
+      firmName: quotation.firmName || '',
+      mobile: quotation.mobile || quotation.contact || '',
+      email: quotation.email || '',
+      address: quotation.address || '',
+      gstNumber: quotation.gstNumber || '',
+      discount: Number(quotation.discount || 0),
+      createdAt: quotation.createdAt ? new Date(quotation.createdAt).toISOString().slice(0, 10) : '',
+      termsConditions: quotation.termsConditions || {
+        selected: DEFAULT_SELECTED_QUOTATION_TERMS,
+        paymentTerms: '',
+      },
+      products: (quotation.products || []).map((product) => {
+        const productId = getProductId(product);
+        const details = productMap[productId] || {};
+        return {
+          productId,
+          productName: product.productName || details.name || product.product_id?.name || productNamesById[productId] || 'Product unavailable',
+          size: product.size || '',
+          innerPack: Number(product.innerPack ?? 1),
+          masterPack: Number(product.masterPack ?? 1),
+          quantity: Number(product.quatity ?? product.quantity ?? 1),
+          mrp: Number(product.mrp || 0),
+          discount: Number(product.discount || 0),
+          finalPrice: Number(product.finalPrice || 0),
+          gstPercentage: Number(product.gstPercentage ?? details.gstPercentage ?? details.gstPercent ?? 0),
+        };
+      }),
+    });
+  };
+
+  const addSelectedSkuToQuotation = () => {
+    const sku = selectedProduct?.sku?.[Number(selectedSkuIndex)];
+    if (!selectedProduct || !sku) {
+      toast.error('Select a product and SKU before adding it.');
+      return;
+    }
+    setEditForm((previous) => ({
+      ...previous,
+      products: [...previous.products, {
+        productId: selectedProduct._id,
+        productName: selectedProduct.name,
+        size: sku.size || '',
+        innerPack: Number(sku.innerPack || 1),
+        masterPack: Number(sku.masterPack || 1),
+        quantity: 1,
+        mrp: Number(sku.mrp || 0),
+        discount: 0,
+        finalPrice: Number(sku.mrp || 0),
+        gstPercentage: Number(selectedProduct.gstPercentage ?? 0),
+      }],
+    }));
+    setSelectedProduct(null);
+    setSelectedSkuIndex('');
+    setProductSearch('');
+    setShowAddProduct(false);
+  };
+
+  const updateEditProduct = (index, field, value) => {
+    setEditForm((previous) => ({
+      ...previous,
+      products: previous.products.map((product, productIndex) =>
+        productIndex === index ? { ...product, [field]: value } : product
+      ),
+    }));
+  };
+
+  const handleSaveQuotation = () => {
+    if (!editForm.clientName.trim() || !editForm.q_id.trim() || !editForm.createdAt || editForm.products.length === 0) {
+      toast.error('Quotation number, client name, date, and at least one product are required.');
+      return;
+    }
+    if (editForm.termsConditions.selected.includes('paymentTerms') && !editForm.termsConditions.paymentTerms.trim()) {
+      toast.error('Enter customized payment terms or uncheck that condition.');
+      return;
+    }
+
+    const products = editForm.products.map((product) => {
+      const totalpcs = product.innerPack * product.quantity;
+      const total = totalpcs * product.finalPrice;
+      return {
+        product_id: product.productId,
+        productName: product.productName.trim(),
+        size: product.size,
+        innerPack: product.innerPack,
+        masterPack: product.masterPack,
+        quatity: product.quantity,
+        totalpcs,
+        cartoon: Number(((product.innerPack / product.masterPack) * product.quantity).toFixed(2)),
+        mrp: product.mrp,
+        discount: product.discount,
+        finalPrice: product.finalPrice,
+        gstPercentage: product.gstPercentage,
+        total,
+      };
+    });
+    const subtotal = products.reduce((sum, product) => sum + product.total, 0);
+    const gstamount = products.reduce((sum, product) => sum + (product.total * product.gstPercentage) / 100, 0);
+    const payload = {
+      q_id: editForm.q_id.trim(),
+      clientName: editForm.clientName.trim(),
+      firmName: editForm.firmName,
+      mobile: editForm.mobile,
+      email: editForm.email,
+      address: editForm.address,
+      gstNumber: editForm.gstNumber,
+      discount: Number(editForm.discount),
+      createdAt: editForm.createdAt,
+      termsConditions: editForm.termsConditions,
+      products,
+      Subtotal: subtotal,
+      gstamount,
+      grandtotal: subtotal + gstamount,
+    };
+
+    setIsSavingEdit(true);
+    updateQuotation(editingQuotation._id, payload, {
+      onSuccess: () => {
+        setEditingQuotation(null);
+        setEditForm(null);
+        toast.success('Quotation updated successfully.');
+        setIsSavingEdit(false);
+      },
+      onError: () => setIsSavingEdit(false),
     });
   };
 
@@ -154,7 +317,7 @@ export default function QuotationsList() {
         `Client : ${quotation.clientName}\n` +
         `Firm   : ${quotation.firmName}\n` +
         `Total  : ₹${quotation.grandtotal?.toFixed(2)}\n\n` +
-        `Please find your quotation PDF attached.\n\n- Mahavir Hospitality`;
+        `Please find your quotation PDF attached.\n\n- Mahaveer Hospitality`;
       await sendWhatsAppQuotation.mutateAsync({ to: withCountry, caption, pdf: base64PDF });
       toast.success(`Quotation sent to ${quotation.clientName} on WhatsApp ✅`, { id: toastId });
     } catch (err) {
@@ -278,6 +441,15 @@ export default function QuotationsList() {
                   </div>
 
                   <div className="flex gap-2 w-full sm:w-auto">
+                    {isAdmin && (
+                      <button
+                        onClick={() => handleEditQuotation(quotation)}
+                        className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-3 sm:px-4 py-2 border border-border text-foreground rounded-lg hover:bg-muted transition-all text-sm"
+                      >
+                        <Pencil className="w-4 h-4" />
+                        <span>Edit</span>
+                      </button>
+                    )}
                     {/* Download */}
                     <button
                       onClick={() => handleDownload(quotation)}
@@ -322,7 +494,7 @@ export default function QuotationsList() {
                     <div key={index} className="flex items-center gap-2 sm:gap-3 text-xs sm:text-sm">
                       <div className="flex-1 min-w-0">
                         <p className="text-foreground truncate">
-                          Product: {productNamesById[getProductId(qp)] || qp.productDetails?.name || qp.product_id?.name || qp.productName || 'Product unavailable'}
+                        Product: {qp.productName || productNamesById[getProductId(qp)] || qp.productDetails?.name || qp.product_id?.name || 'Product unavailable'}
                         </p>
                         <p className="text-muted-foreground">
                           {qp.size} • Qty: {qp.quatity} • ₹{qp.finalPrice?.toFixed(2)}
@@ -346,6 +518,347 @@ export default function QuotationsList() {
           );
         })}
       </div>
+
+      {isAdmin && editingQuotation && editForm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3 sm:p-6">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="edit-quotation-title"
+            className="flex max-h-full w-full max-w-4xl flex-col overflow-hidden rounded-lg border border-border bg-card shadow-xl"
+          >
+            <div className="flex items-center justify-between border-b border-border p-4 sm:p-5">
+              <div>
+                <h2 id="edit-quotation-title" className="text-lg font-medium text-foreground">Edit quotation</h2>
+                <p className="text-sm text-muted-foreground">Update all saved quotation details and line-item pricing.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setEditingQuotation(null); setEditForm(null); }}
+                aria-label="Close quotation editor"
+                className="rounded-md p-2 text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="space-y-5 overflow-y-auto p-4 sm:p-5">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {[
+                  ['q_id', 'Quotation number'],
+                  ['clientName', 'Client name'],
+                  ['firmName', 'Firm name'],
+                  ['mobile', 'Mobile'],
+                  ['email', 'Email'],
+                  ['address', 'Address'],
+                  ['gstNumber', 'GST number'],
+                  ['discount', 'Global discount (%)'],
+                ].map(([field, label]) => (
+                  <label key={field} className="block text-sm text-muted-foreground">
+                    {label}
+                    <input
+                      type={field === 'discount' ? 'number' : 'text'}
+                      min={field === 'discount' ? 0 : undefined}
+                      max={field === 'discount' ? 100 : undefined}
+                      value={editForm[field]}
+                      onChange={(event) => setEditForm((previous) => ({ ...previous, [field]: event.target.value }))}
+                      className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
+                  </label>
+                ))}
+                <label className="block text-sm text-muted-foreground">
+                  Quotation date
+                  <input
+                    type="date"
+                    value={editForm.createdAt}
+                    onChange={(event) => setEditForm((previous) => ({ ...previous, createdAt: event.target.value }))}
+                    className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                </label>
+              </div>
+
+              <section className="rounded-md border border-border p-3">
+                <h3 className="mb-3 font-medium text-foreground">Terms and conditions</h3>
+                <div className="space-y-2">
+                  {DEFAULT_QUOTATION_TERMS.slice(0, 5).map((term, index) => (
+                    <label key={term.id} className="flex items-start gap-2 text-sm text-foreground">
+                      <input
+                        type="checkbox"
+                        checked={editForm.termsConditions.selected.includes(term.id)}
+                        onChange={(event) => setEditForm((previous) => ({
+                          ...previous,
+                          termsConditions: {
+                            ...previous.termsConditions,
+                            selected: event.target.checked
+                              ? [...previous.termsConditions.selected, term.id]
+                              : previous.termsConditions.selected.filter((id) => id !== term.id),
+                          },
+                        }))}
+                        className="mt-1 accent-primary"
+                      />
+                      <span>{index + 1}. {term.text}</span>
+                    </label>
+                  ))}
+                  <div className="flex items-start gap-2 text-sm text-foreground">
+                    <input
+                      type="checkbox"
+                      checked={editForm.termsConditions.selected.includes('paymentTerms')}
+                      onChange={(event) => setEditForm((previous) => ({
+                        ...previous,
+                        termsConditions: {
+                          ...previous.termsConditions,
+                          selected: event.target.checked
+                            ? [...previous.termsConditions.selected, 'paymentTerms']
+                            : previous.termsConditions.selected.filter((id) => id !== 'paymentTerms'),
+                        },
+                      }))}
+                      className="mt-1 accent-primary"
+                    />
+                    <div className="flex-1">
+                      <label htmlFor="edit-quotation-payment-terms">6. Payment terms</label>
+                      <input
+                        id="edit-quotation-payment-terms"
+                        type="text"
+                        value={editForm.termsConditions.paymentTerms}
+                        onChange={(event) => setEditForm((previous) => ({
+                          ...previous,
+                          termsConditions: { ...previous.termsConditions, paymentTerms: event.target.value },
+                        }))}
+                        placeholder="Enter customized payment terms"
+                        className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                      />
+                    </div>
+                  </div>
+                  {DEFAULT_QUOTATION_TERMS.slice(5).map((term, index) => (
+                    <label key={term.id} className="flex items-start gap-2 text-sm text-foreground">
+                      <input
+                        type="checkbox"
+                        checked={editForm.termsConditions.selected.includes(term.id)}
+                        onChange={(event) => setEditForm((previous) => ({
+                          ...previous,
+                          termsConditions: {
+                            ...previous.termsConditions,
+                            selected: event.target.checked
+                              ? [...previous.termsConditions.selected, term.id]
+                              : previous.termsConditions.selected.filter((id) => id !== term.id),
+                          },
+                        }))}
+                        className="mt-1 accent-primary"
+                      />
+                      <span>{index + 7}. {term.text}</span>
+                    </label>
+                  ))}
+                </div>
+              </section>
+
+              <div>
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="font-medium text-foreground">Products and pricing</h3>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowAddProduct((previous) => !previous);
+                      setProductSearch('');
+                      setSelectedProduct(null);
+                      setSelectedSkuIndex('');
+                    }}
+                    className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm text-foreground hover:bg-muted"
+                  >
+                    <Plus className="h-4 w-4" />
+                    {showAddProduct ? 'Close product search' : 'Add product'}
+                  </button>
+                </div>
+
+                {showAddProduct && (
+                  <div className="mb-4 space-y-3 rounded-md border border-border bg-background p-3">
+                    <label className="block text-sm text-muted-foreground">
+                      Search products
+                      <div className="relative mt-1">
+                        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                        <input
+                          type="search"
+                          value={productSearch}
+                          onChange={(event) => {
+                            setProductSearch(event.target.value);
+                            setSelectedProduct(null);
+                            setSelectedSkuIndex('');
+                          }}
+                          placeholder="Type at least 2 characters..."
+                          className="w-full rounded-md border border-border bg-card py-2 pl-9 pr-3 text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                        />
+                      </div>
+                    </label>
+
+                    {productSearch.trim().length >= 2 && (
+                      <div className="max-h-48 space-y-1 overflow-y-auto">
+                        {isSearchingProducts && (
+                          <p className="p-2 text-sm text-muted-foreground">Searching products...</p>
+                        )}
+                        {productSearchFailed && (
+                          <p className="p-2 text-sm text-destructive">Could not load product suggestions.</p>
+                        )}
+                        {!isSearchingProducts && !productSearchFailed && productSuggestions.length === 0 && (
+                          <p className="p-2 text-sm text-muted-foreground">No matching products found.</p>
+                        )}
+                        {productSuggestions.map((product) => (
+                          <button
+                            key={product._id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedProduct(product);
+                              setSelectedSkuIndex('');
+                            }}
+                            className={`flex w-full items-center justify-between gap-3 rounded-md px-3 py-2 text-left text-sm transition-colors ${
+                              selectedProduct?._id === product._id
+                                ? 'bg-primary/10 text-foreground'
+                                : 'text-foreground hover:bg-muted'
+                            }`}
+                          >
+                            <span className="truncate font-medium">{product.name}</span>
+                            <span className="shrink-0 text-xs text-muted-foreground">
+                              {product.sku?.length || 0} SKU{product.sku?.length === 1 ? '' : 's'}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {selectedProduct && (
+                      <div className="flex flex-col gap-2 sm:flex-row">
+                        <label className="flex-1 text-sm text-muted-foreground">
+                          Select SKU / size for {selectedProduct.name}
+                          <select
+                            value={selectedSkuIndex}
+                            onChange={(event) => setSelectedSkuIndex(event.target.value)}
+                            className="mt-1 w-full rounded-md border border-border bg-card px-3 py-2 text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                          >
+                            <option value="">Choose a size...</option>
+                            {(selectedProduct.sku || []).map((sku, index) => (
+                              <option key={`${sku.size}-${index}`} value={index}>
+                                {sku.size} — MRP ₹{Number(sku.mrp || 0).toFixed(2)}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <button
+                          type="button"
+                          onClick={addSelectedSkuToQuotation}
+                          disabled={selectedSkuIndex === ''}
+                          className="self-end rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          Add selected SKU
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div className="space-y-3">
+                  {editForm.products.map((product, index) => (
+                    <div key={`${product.productId}-${index}`} className="rounded-md border border-border p-3">
+                      <div className="mb-3 flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate font-medium text-foreground">{product.productName}</p>
+                          <p className="text-xs text-muted-foreground">Quotation product name</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setEditForm((previous) => ({
+                            ...previous,
+                            products: previous.products.filter((_, productIndex) => productIndex !== index),
+                          }))}
+                          aria-label={`Remove ${product.productName} from quotation`}
+                          className="rounded-md p-2 text-destructive hover:bg-destructive/10"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                      <label className="mb-3 block text-xs text-muted-foreground">
+                        Product name
+                        <input
+                          type="text"
+                          value={product.productName}
+                          onChange={(event) => updateEditProduct(index, 'productName', event.target.value)}
+                          className="mt-1 w-full rounded-md border border-border bg-background px-2 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                        />
+                      </label>
+                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+                        {[
+                          ['size', 'Size', 'text'],
+                          ['innerPack', 'Inner pack', 'number'],
+                          ['masterPack', 'Master pack', 'number'],
+                          ['quantity', 'Quantity', 'number'],
+                          ['mrp', 'MRP', 'number'],
+                          ['discount', 'Discount (%)', 'number'],
+                          ['finalPrice', 'Final price', 'number'],
+                          ['gstPercentage', 'GST (%)', 'number'],
+                        ].map(([field, label, type]) => (
+                          <label key={field} className="block text-xs text-muted-foreground">
+                            {label}
+                            <input
+                              type={type}
+                              min={type === 'number' ? (['innerPack', 'masterPack', 'quantity'].includes(field) ? 1 : 0) : undefined}
+                              max={field === 'discount' ? 100 : undefined}
+                              step={type === 'number' ? 'any' : undefined}
+                              value={product[field]}
+                              onChange={(event) => updateEditProduct(
+                                index,
+                                field,
+                                type === 'number' ? Number(event.target.value) : event.target.value,
+                              )}
+                              className="mt-1 w-full rounded-md border border-border bg-background px-2 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                            />
+                          </label>
+                        ))}
+                      </div>
+                      <p className="mt-3 text-right text-sm text-muted-foreground">
+                        Line total: ₹{(product.innerPack * product.quantity * product.finalPrice).toFixed(2)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {(() => {
+                const subtotal = editForm.products.reduce(
+                  (sum, product) => sum + product.innerPack * product.quantity * product.finalPrice,
+                  0,
+                );
+                const gstamount = editForm.products.reduce(
+                  (sum, product) => sum + (product.innerPack * product.quantity * product.finalPrice * product.gstPercentage) / 100,
+                  0,
+                );
+                return (
+                  <div className="space-y-1 border-t border-border pt-3 text-right text-sm text-muted-foreground">
+                    <p>Subtotal: ₹{subtotal.toFixed(2)}</p>
+                    <p>GST: ₹{gstamount.toFixed(2)}</p>
+                    <p className="font-medium text-foreground">Grand total: ₹{(subtotal + gstamount).toFixed(2)}</p>
+                  </div>
+                );
+              })()}
+            </div>
+
+            <div className="flex justify-end gap-2 border-t border-border p-4 sm:p-5">
+              <button
+                type="button"
+                onClick={() => { setEditingQuotation(null); setEditForm(null); }}
+                className="rounded-md border border-border px-4 py-2 text-sm text-foreground hover:bg-muted"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveQuotation}
+                disabled={isSavingEdit}
+                className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <Save className="h-4 w-4" />
+                {isSavingEdit ? 'Saving...' : 'Save changes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Pagination ────────────────────────────────────────────────────────── */}
       {isAdmin && quotationPages > 1 && (

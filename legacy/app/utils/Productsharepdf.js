@@ -49,6 +49,7 @@ function normalizeProduct(p) {
   const variantSource = p.variants || p.sku || p.sizes || [];
   return {
     name      : p.name || '—',
+    description: p.description || '',
     hsnCode   : p.hsnCode || null,
     gstPercent: p.gstPercentage ?? p.gstPercent ?? null,
     img       : p.img || p.image || null,
@@ -122,6 +123,18 @@ export async function generateProductSharePDF(products = []) {
     return out.length ? out + '…' : '…';
   };
 
+  const descriptionLines = (description, maxWidth, size, maxLines) => {
+    if (!description) return [];
+    pdf.setFontSize(size);
+    pdf.setFont('helvetica', 'normal');
+    const lines = pdf.splitTextToSize(String(description), maxWidth);
+    if (lines.length <= maxLines) return lines;
+    return [
+      ...lines.slice(0, maxLines - 1),
+      truncate(`${lines[maxLines - 1]}…`, maxWidth, size, false),
+    ];
+  };
+
   if (!normalized.length) {
     fillPage();
     t('No products selected.', PW / 2, PH / 2, { size: 12, color: C.greyMid, align: 'center' });
@@ -152,7 +165,7 @@ export async function generateProductSharePDF(products = []) {
     if (logoData) {
       try { pdf.addImage(logoData, 'PNG', MARGIN, 4, 18, 18); } catch { /* skip */ }
     }
-    t('Mahavir HOSPITALITY',           PW / 2, 12, { size: 15, bold: true, color: [255, 255, 255], align: 'center' });
+    t('Mahaveer Hospitality',           PW / 2, 12, { size: 15, bold: true, color: [255, 255, 255], align: 'center' });
     t('P R O D U C T   C A T A L O G', PW / 2, 19, { size: 8,  color: [203, 213, 225],             align: 'center' });
   };
 
@@ -164,7 +177,7 @@ export async function generateProductSharePDF(products = []) {
       pdf.setDrawColor(...C.goldMuted);
       pdf.setLineWidth(0.3);
       pdf.line(MARGIN, fY - 4, PW - MARGIN, fY - 4);
-      t('Mahavir Hospitality \u2014 Product Catalog', MARGIN, fY, { size: 7, color: C.greyMid });
+      t('Mahaveer Hospitality \u2014 Product Catalog', MARGIN, fY, { size: 7, color: C.greyMid });
       t(`Page ${i} of ${pageCount}`, PW - MARGIN, fY, { size: 7, color: C.greyMid, align: 'right' });
     }
   };
@@ -201,7 +214,7 @@ export async function generateProductSharePDF(products = []) {
   const IMG_W_SC     = 52;
   const ROW_H_SC     = 7;
   const HDR_H_SC     = 6;
-  const NAME_H_SC    = 14;
+  const NAME_H_SC    = 27;
   const IMG_MIN_H_SC = 50;
 
   const cardHeightFor = (product) => {
@@ -258,9 +271,12 @@ export async function generateProductSharePDF(products = []) {
 
     t(truncate(product.name, tableW - 2, 9, true), nameX, nameY, { size: 9, bold: true, color: C.gold });
 
+    descriptionLines(product.description, tableW - 2, 5.5, 2).forEach((line, index) => {
+      t(line, nameX, nameY + 10 + index * 3, { size: 5.5, color: C.greyLight });
+    });
     const hsnVal = product.hsnCode    ? `HSN Code: ${product.hsnCode}` : 'HSN Code: —';
     const gstVal = product.gstPercent != null ? `  GST: ${product.gstPercent}%` : '  GST: —';
-    t(hsnVal + gstVal, nameX, nameY + 5, { size: 5.5, color: C.greyMid });
+    t(hsnVal + gstVal, nameX, nameY + 18, { size: 5.5, color: C.greyMid });
 
     const tableStartY = y + PAD_SC + NAME_H_SC;
 
@@ -341,7 +357,7 @@ export async function generateProductSharePDF(products = []) {
     pdf.setLineWidth(0.25);
     pdf.rect(x, y, w, h, 'FD');
 
-    const NAME_H     = 10.5;
+    const NAME_H     = 15.5;
     const HDR_H      = 4.5;
     const MIN_ROW_H  = 3.6;
     const MAX_ROW_H  = 7;
@@ -397,13 +413,17 @@ export async function generateProductSharePDF(products = []) {
     const nameY = imgY + imgH + 4;
     t(truncate(product.name, w - PAD * 2, 7, true), x + PAD, nameY, { size: 7, bold: true, color: C.gold });
 
+    const description = descriptionLines(product.description, w - PAD * 2, 4.5, 1)[0];
+    if (description) {
+      t(description, x + PAD, nameY + 4, { size: 4.5, color: C.greyLight });
+    }
     const hsnVal = product.hsnCode    ? `HSN ${product.hsnCode}` : 'HSN \u2014';
     const gstVal = product.gstPercent != null ? `GST ${product.gstPercent}%` : 'GST \u2014';
-    t(`${hsnVal}   |   ${gstVal}`, x + PAD, nameY + 4, { size: 5.5, color: C.greyMid });
+    t(`${hsnVal}   |   ${gstVal}`, x + PAD, nameY + 8, { size: 5.5, color: C.greyMid });
 
     const tableX = x + PAD;
     const tableW = w - PAD * 2;
-    const tableY = nameY + 6.5;
+    const tableY = nameY + 11.5;
 
     const cols = [
       { label: 'SIZE',  key: 'size',       w: 0.18 },
@@ -475,7 +495,7 @@ export async function generateProductSharePDF(products = []) {
   const drawWideCard = (product, x, y, w, h, imgW) => {
     const PAD      = 4;
     const ACCENT_W = 1.5;
-    const NAME_H   = 15;
+    const NAME_H   = 28;
     const HDR_H    = 7;
     const MIN_ROW_H = 6;
     const MAX_ROW_H = 10;
@@ -528,9 +548,12 @@ export async function generateProductSharePDF(products = []) {
     const nameY = y + PAD + 6;
     t(truncate(product.name, tableW - 2, 11, true), nameX, nameY, { size: 11, bold: true, color: C.gold });
 
+    descriptionLines(product.description, tableW - 2, 5.5, 2).forEach((line, index) => {
+      t(line, nameX, nameY + 10 + index * 3, { size: 5.5, color: C.greyLight });
+    });
     const hsnVal = product.hsnCode    ? `HSN Code: ${product.hsnCode}` : 'HSN Code: —';
     const gstVal = product.gstPercent != null ? `  GST: ${product.gstPercent}%` : '  GST: —';
-    t(hsnVal + gstVal, nameX, nameY + 6, { size: 6.5, color: C.greyMid });
+    t(hsnVal + gstVal, nameX, nameY + 18, { size: 6.5, color: C.greyMid });
 
     // Table — dynamically sized rows, with overflow tag if slot is too short
     const tableStartY   = y + PAD + NAME_H;

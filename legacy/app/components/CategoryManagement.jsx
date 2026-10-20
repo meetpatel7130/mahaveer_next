@@ -147,7 +147,7 @@ export default function CategoryManagement() {
               {preview ? (
                 <div className="flex items-center gap-4">
                   <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-border flex-shrink-0">
-                    <img src={preview} alt="preview" className="w-full h-full object-cover" />
+                    <img src={preview} alt="preview" className="w-full h-full object-contain" />
                   </div>
                   <button
                     type="button"
@@ -207,7 +207,7 @@ export default function CategoryManagement() {
                     <img
                       src={`${BACKEND_URL}${category.img}`}
                       alt={category.name}
-                      className="w-full h-full object-cover"
+                      className="w-full h-full object-contain"
                       onError={(e) => { e.target.style.display = 'none'; }}
                     />
                   ) : (

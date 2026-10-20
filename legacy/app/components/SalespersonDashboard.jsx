@@ -239,7 +239,7 @@ export default function SalespersonDashboard() {
 
       await sendWhatsAppQuotation.mutateAsync({
         to     : withCountry,
-        caption: `*Product Catalog*\n\nHere is the product catalog you requested.\n\n- Mahavir Hospitality`,
+        caption: `*Product Catalog*\n\nHere is the product catalog you requested.\n\n- Mahaveer Hospitality`,
         pdf    : base64,
       });
 
@@ -313,7 +313,7 @@ export default function SalespersonDashboard() {
                 </button>
               )}
               <div>
-                <h1 className="text-base sm:text-lg md:text-xl text-foreground dark:text-primary">Mahavir Hospitality</h1>
+                <h1 className="text-base sm:text-lg md:text-xl text-foreground dark:text-primary">Mahaveer Hospitality</h1>
                 <p className="text-xs sm:text-sm text-muted-foreground hidden sm:block">Welcome, {user?.fullName}</p>
               </div>
             </div>
@@ -362,7 +362,6 @@ export default function SalespersonDashboard() {
           <div>
             <div className="mb-4 sm:mb-6">
               <h2 className="mb-2 text-foreground text-lg sm:text-xl">Product Categories</h2>
-              <p className="text-muted-foreground text-sm">Browse products by category</p>
             </div>
             <CategoryGrid
               categories={categories.map((c) => ({ ...c, id: c._id, image: c.img ? `${BACKEND_URL}${c.img}` : null }))}
@@ -376,7 +375,6 @@ export default function SalespersonDashboard() {
           <div>
             <div className="mb-4 sm:mb-6">
               <h2 className="mb-2 text-foreground text-lg sm:text-xl">Our Companies</h2>
-              <p className="text-muted-foreground text-sm">Select a company to view their products</p>
             </div>
             <CategoryGrid
               categories={companies.map((c) => ({ ...c, id: c._id, image: c.image ? `${BACKEND_URL}${c.image}` : null }))}

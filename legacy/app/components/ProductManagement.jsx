@@ -239,7 +239,7 @@ export default function ProductManagement() {
 
               {preview ? (
                 <div className="relative w-32 h-32 sm:w-40 sm:h-40">
-                  <img src={preview} alt="preview" className="w-32 h-32 sm:w-40 sm:h-40 object-cover rounded-lg border border-border" />
+                  <img src={preview} alt="preview" className="w-32 h-32 sm:w-40 sm:h-40 object-contain rounded-lg border border-border" />
                   <button type="button" onClick={removeImage} className="absolute -top-2 -right-2 p-1 bg-destructive text-white rounded-full hover:bg-destructive/90">
                     <X className="w-3 h-3" />
                   </button>
@@ -429,7 +429,7 @@ export default function ProductManagement() {
           {products.map((product) => (
             <div key={product._id} className="min-w-0 bg-card border border-border rounded-lg shadow-md overflow-hidden">
               {product.img ? (
-                <img src={`${BACKEND_URL}${product.img}`} alt={product.name} className="aspect-[4/3] w-full object-cover"
+                <img src={`${BACKEND_URL}${product.img}`} alt={product.name} className="aspect-[4/3] w-full object-contain"
                   onError={(e) => { e.target.style.display = 'none'; }} />
               ) : (
                 <div className="aspect-[4/3] w-full bg-muted flex items-center justify-center">
@@ -462,7 +462,7 @@ export default function ProductManagement() {
                 {product.sku?.length > 0 && (
                   <div className="border-t border-border pt-2 sm:pt-3 mt-2 sm:mt-3">
                     <p className="text-xs sm:text-sm mb-2 text-foreground font-medium">Sizes:</p>
-                    <div className="space-y-1">
+                    <div className="max-h-40 space-y-1 overflow-y-auto overscroll-contain pr-1">
                       {product.sku.map((s, i) => (
                         <div key={i} className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-2 gap-y-1 p-2 bg-muted rounded text-xs sm:text-sm">
                           <span className="min-w-0 break-words text-muted-foreground">{s.size}</span>

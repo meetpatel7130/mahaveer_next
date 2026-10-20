@@ -53,7 +53,7 @@ export default function ProductCardWithSizes({
             <img
               src={product.image ? `${BACKEND_URL}${product.image}` : '/placeholder.png'}
               alt={product.name}
-              className="w-full h-48 object-cover"
+              className="w-full h-48 object-contain"
               onError={(e) => { e.target.src = '/placeholder.png'; }}
             />
             :
@@ -88,7 +88,7 @@ export default function ProductCardWithSizes({
         {!shareMode && (
           <div className="border-t border-border pt-4 dark:border-primary/20">
             <p className="text-sm mb-2 font-medium text-foreground dark:text-primary">Select Sizes:</p>
-            <div className="space-y-2">
+            <div className="max-h-48 space-y-2 overflow-y-auto overscroll-contain pr-1">
               {(product.sizes || []).map((sizeObj) => (
                 <div
                   key={sizeObj.size}
@@ -132,7 +132,7 @@ export default function ProductCardWithSizes({
         {shareMode && (
           <div className="border-t border-border pt-3 dark:border-primary/20">
             <p className="text-xs text-muted-foreground mb-2">Sizes:</p>
-            <div className="flex flex-wrap gap-1">
+            <div className="flex max-h-24 flex-wrap gap-1 overflow-y-auto overscroll-contain">
               {(product.sizes || []).map((s) => (
                 <span key={s.size} className="text-xs px-2 py-0.5 bg-muted rounded text-foreground">
                   {s.size} — ₹{s.mrp}
