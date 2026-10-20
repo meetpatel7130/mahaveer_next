@@ -38,25 +38,40 @@ export default function UserManagement() {
       toast.error('Password is required for new users.');
       return;
     }
+    if (password && password.length < 6) {
+      toast.error('Password must be at least 6 characters.');
+      return;
+    }
 
     const payload = { fullName, email, mobile, username, role };
     if (password) payload.password = password; // only send if filled
 
     setIsSubmitting(true);
 
-    // After
-if (editingId) {
-  updateUser(editingId, payload, {
-    onSuccess: () => toast.success('User updated successfully'),
-    onError  : () => toast.error('Failed to update user.'),
-  });
-} else {
-  const data = addUser(payload);
-  console.log("addd user",data)
-  toast.success('User added successfully');
-}
-setIsSubmitting(false);
-setIsAdding(false);
+    const handleSuccess = (message) => {
+      toast.success(message);
+      setIsSubmitting(false);
+      setIsAdding(false);
+      setEditingId(null);
+      setFormData(EMPTY_FORM);
+      setShowPassword(false);
+    };
+    const handleError = (message) => {
+      toast.error(message);
+      setIsSubmitting(false);
+    };
+
+    if (editingId) {
+      updateUser(editingId, payload, {
+        onSuccess: () => handleSuccess('User updated successfully'),
+        onError: (error) => handleError(error?.response?.data?.message || 'Failed to update user.'),
+      });
+    } else {
+      addUser(payload, {
+        onSuccess: () => handleSuccess('User added successfully'),
+        onError: (error) => handleError(error?.response?.data?.message || 'Failed to add user.'),
+      });
+    }
   };
 
   // ── Edit ──────────────────────────────────────────────────────────────────
@@ -67,7 +82,7 @@ setIsAdding(false);
       mobile  : user.mobile   || '',
       username: user.username || '',
       password: '',             // never prefill password
-      role    : user.role     || 'sales',
+      role    : user.userType || user.role || 'sales',
     });
     setEditingId(user._id);
     setIsAdding(true);

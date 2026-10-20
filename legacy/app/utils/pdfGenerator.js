@@ -1,4 +1,5 @@
 import { jsPDF } from 'jspdf';
+import { DEFAULT_QUOTATION_TERMS } from './quotationTerms';
 const Mahavirlogo = '/mahavirlogo.png';
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL_IMG || '';
@@ -70,6 +71,19 @@ export async function generateQuotationPDF(quotation, selectedColumns, mode) {
     pdf.text(String(str ?? ''), x, y, { align: opts.align || 'left' });
   };
 
+  const termsConditions = quotation.termsConditions || {};
+  const selectedTermIds = new Set(termsConditions.selected || []);
+  const selectedTerms = DEFAULT_QUOTATION_TERMS.flatMap((term, index) => {
+    const terms = [];
+    if (index === 5 && selectedTermIds.has('paymentTerms') && termsConditions.paymentTerms?.trim()) {
+      terms.push({ number: 6, text: `Payment Terms: ${termsConditions.paymentTerms.trim()}` });
+    }
+    if (selectedTermIds.has(term.id)) {
+      terms.push({ number: index < 5 ? index + 1 : index + 2, text: term.text });
+    }
+    return terms;
+  });
+
   const checkPage = (needed = ROW_H + 4) => {
     if (yPos + needed > pageHeight - 18) {
       pdf.addPage();
@@ -111,7 +125,7 @@ export async function generateQuotationPDF(quotation, selectedColumns, mode) {
 
   // Company name & subtitle
   const hTextX = margin + 26;
-  t('Mahavir HOSPITALITY', hTextX, 13, { size: 15, bold: true, color: C.gold });
+  t('Mahaveer Hospitality', hTextX, 13, { size: 15, bold: true, color: C.gold });
   t('Product Quotation', hTextX, 20, { size: 8, color: C.greyLight });
 
   yPos = HEADER_H + 7;
@@ -163,7 +177,7 @@ export async function generateQuotationPDF(quotation, selectedColumns, mode) {
   pdf.rect(selX, sY, halfW, 6, 'S');
   t('SELLER DETAILS', selX + 2, sY + 4.5, { size: 8, bold: true, color: C.gold });
   sY += 10;
-  t('Company    : Mahavir Hospitality',          selX + 2, sY, { size: 8, color: C.greyLight }); sY += 4.5;
+  t('Company    : Mahaveer Hospitality',          selX + 2, sY, { size: 8, color: C.greyLight }); sY += 4.5;
   t(`Created By : ${quotation.createdBy || ''}`,  selX + 2, sY, { size: 8, color: C.greyLight });
 
   yPos = Math.max(clientBottom, sY) + 12;
@@ -230,7 +244,7 @@ export async function generateQuotationPDF(quotation, selectedColumns, mode) {
       ? ((1 / (qp.masterPack / (qp.innerPack || 1))) * (qp.quatity || qp.quantity || 0)).toFixed(2)
       : '—';
     const itemSub   = totalPcs * (qp.finalPrice || 0);
-    const gstPct    = details.gstPercentage ?? details.gstPercent ?? 0;
+    const gstPct    = qp.gstPercentage ?? details.gstPercentage ?? details.gstPercent ?? 0;
     const itemTotal = itemSub + (itemSub * gstPct) / 100;
 
     // Alternating row bg
@@ -263,7 +277,7 @@ export async function generateQuotationPDF(quotation, selectedColumns, mode) {
           break;
         }
         case 'product':
-          t(details.name || qp.productName || 'Product unavailable', x, top, { size: 7, bold: true, color: C.white });
+          t(qp.productName || details.name || 'Product unavailable', x, top, { size: 7, bold: true, color: C.white });
           t(`HSN: ${details.hsnCode || '—'}`,      x, bot, { size: 6, color: C.greyMid });
           if (details.material) {
             t(`Mat: ${details.material}`,           x, bot + 4, { size: 6, color: C.greyMid });
@@ -325,6 +339,25 @@ export async function generateQuotationPDF(quotation, selectedColumns, mode) {
   t(`${(quotation.grandTotal || quotation.grandtotal || 0).toFixed(2)}`, totX + totW - 2, yPos + 6.5, { size: 9, bold: true, color: C.gold, align: 'right' });
   yPos += 16;
 
+  if (selectedTerms.length > 0) {
+    checkPage(14);
+    t('TERMS AND CONDITIONS', margin, yPos, { size: 9, bold: true, color: C.gold });
+    yPos += 6;
+    selectedTerms.forEach((term) => {
+      pdf.setFontSize(7);
+      pdf.setFont('helvetica', 'normal');
+      const lines = pdf.splitTextToSize(`${term.number}. ${term.text}`, usable - 4);
+      const blockHeight = lines.length * 4;
+      checkPage(blockHeight + 2);
+      lines.forEach((line) => {
+        t(line, margin + 2, yPos, { size: 7, color: C.greyLight });
+        yPos += 4;
+      });
+      yPos += 1;
+    });
+    yPos += 2;
+  }
+
   // ── Signature ─────────────────────────────────────────────────────────
   checkPage(16);
   const sigX = pageWidth - margin - 55;
@@ -340,7 +373,7 @@ export async function generateQuotationPDF(quotation, selectedColumns, mode) {
   pdf.setLineWidth(0.3);
   pdf.line(margin, fY - 4, pageWidth - margin, fY - 4);
   t('Thank you for your business!', pageWidth / 2, fY - 1, { size: 8, color: C.greyMid, align: 'center' });
-  t('Mahavir Hospitality — Bill Quotation & Catalog System', pageWidth / 2, fY + 3, { size: 7, color: C.greyDark, align: 'center' });
+  t('Mahaveer Hospitality — Bill Quotation & Catalog System', pageWidth / 2, fY + 3, { size: 7, color: C.greyDark, align: 'center' });
 
   // ── Output ────────────────────────────────────────────────────────────
   if (mode === 'download') {

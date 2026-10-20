@@ -309,6 +309,14 @@ async function handleUsers(request, method, route, user, query, body) {
   }
 
   if (route[0] === "edituser" && method === "PUT") {
+    const password = body.password;
+    if (password !== undefined && password !== "" && String(password).length < 6) {
+      return fail("Password must be at least 6 characters.", 400);
+    }
+
+    const [existing] = await pool.execute("SELECT id FROM users WHERE id = ? LIMIT 1", [route[1]]);
+    if (!existing[0]) return fail("User not found.", 404);
+
     const fieldMap = {
       fullName: "full_name",
       email: "email",
@@ -327,9 +335,13 @@ async function handleUsers(request, method, route, user, query, body) {
           : body[field]);
       }
     }
+    if (password !== undefined && password !== "") {
+        updates.push("password_hash = ?");
+        values.push(await bcrypt.hash(String(password), 10));
+    }
     if (updates.length) {
-      values.push(route[1]);
-      await pool.execute(`UPDATE users SET ${updates.join(", ")} WHERE id = ?`, values);
+        values.push(route[1]);
+        await pool.execute(`UPDATE users SET ${updates.join(", ")} WHERE id = ?`, values);
     }
     const [rows] = await pool.execute(
       `SELECT id, full_name, email, mobile, username, user_type, last_login, created_at, updated_at
@@ -677,6 +689,117 @@ async function handleProducts(request, method, route, user, query, body) {
 }
 
 async function handleQuotations(request, method, route, user, query, body) {
+  if (route[0] === "editquotation") {
+    if (!user) return fail("Not logged in. Please login first.", 401);
+    if (user.userType !== "admin") return fail("Admin only.", 403);
+    if (method !== "PUT") return fail("Method not allowed.", 405);
+
+    const [existing] = await getPool().execute(
+      "SELECT id FROM quotations WHERE id = ? LIMIT 1",
+      [route[1]],
+    );
+    if (!existing[0]) return fail("Quotation not found.", 404);
+
+    const clientName = String(body.clientName || "").trim();
+    const quotationId = String(body.q_id || "").trim();
+    if (!clientName) return fail("Client name is required.", 400);
+    if (!/^MH-\d{6}$/.test(quotationId)) return fail("Quotation number must use the format MH-000000.", 400);
+    if (!Array.isArray(body.products) || body.products.length === 0) {
+      return fail("At least one product is required.", 400);
+    }
+
+    const numeric = (value, label, { min = 0 } = {}) => {
+      const number = Number(value);
+      if (!Number.isFinite(number) || number < min) {
+        throw Object.assign(new Error(`${label} must be a valid number greater than or equal to ${min}.`), { status: 400 });
+      }
+      return number;
+    };
+    const products = body.products.map((product, index) => {
+      const productId = typeof product.product_id === "string"
+        ? product.product_id.trim()
+        : product.product_id?._id;
+      const productName = String(product.productName || "").trim();
+      if (!productId || !productName) {
+        throw Object.assign(new Error(`Product ${index + 1} must have a product and name.`), { status: 400 });
+      }
+      const innerPack = numeric(product.innerPack, `Product ${index + 1} inner pack`, { min: 1 });
+      const masterPack = numeric(product.masterPack, `Product ${index + 1} master pack`, { min: 1 });
+      const quantity = numeric(product.quatity ?? product.quantity, `Product ${index + 1} quantity`, { min: 1 });
+      const mrp = numeric(product.mrp, `Product ${index + 1} MRP`);
+      const discount = numeric(product.discount, `Product ${index + 1} discount`, { min: 0 });
+      const finalPrice = numeric(product.finalPrice, `Product ${index + 1} final price`);
+      const gstPercentage = numeric(product.gstPercentage, `Product ${index + 1} GST`);
+      if (discount > 100) throw Object.assign(new Error(`Product ${index + 1} discount cannot exceed 100%.`), { status: 400 });
+      if (gstPercentage > 100) throw Object.assign(new Error(`Product ${index + 1} GST cannot exceed 100%.`), { status: 400 });
+
+      const totalpcs = innerPack * quantity;
+      const total = totalpcs * finalPrice;
+      return {
+        product_id: productId,
+        productName,
+        size: String(product.size || "").trim(),
+        innerPack,
+        masterPack,
+        quatity: quantity,
+        quantity,
+        totalpcs,
+        cartoon: Number(((innerPack / masterPack) * quantity).toFixed(2)),
+        mrp,
+        discount,
+        finalPrice,
+        gstPercentage,
+        total,
+      };
+    });
+    const discount = numeric(body.discount ?? 0, "Global discount");
+    if (discount > 100) return fail("Global discount cannot exceed 100%.", 400);
+    const termsConditions = normalizeQuotationTerms(body.termsConditions);
+    const subtotal = products.reduce((sum, product) => sum + product.total, 0);
+    const gstamount = products.reduce(
+      (sum, product) => sum + (product.total * product.gstPercentage) / 100,
+      0,
+    );
+    const grandtotal = subtotal + gstamount;
+    const date = String(body.createdAt || "");
+    const parsedDate = new Date(`${date}T00:00:00.000Z`);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(parsedDate.getTime()) || parsedDate.toISOString().slice(0, 10) !== date) {
+      return fail("A valid quotation date is required.", 400);
+    }
+
+    try {
+      await getPool().execute(
+        `UPDATE quotations
+            SET q_id = ?, client_name = ?, firm_name = ?, mobile = ?, email = ?, address = ?,
+                gst_number = ?, discount = ?, products = ?, terms_conditions = ?, subtotal = ?, gst_amount = ?,
+                grandtotal = ?, created_at = ?
+          WHERE id = ?`,
+        [
+          quotationId,
+          clientName,
+          String(body.firmName || "").trim() || null,
+          body.mobile == null ? null : String(body.mobile).trim() || null,
+          String(body.email || "").trim() || null,
+          String(body.address || "").trim() || null,
+          String(body.gstNumber || "").trim() || null,
+          discount,
+          JSON.stringify(products),
+          JSON.stringify(termsConditions),
+          subtotal,
+          gstamount,
+          grandtotal,
+          `${date} 00:00:00`,
+          route[1],
+        ],
+      );
+    } catch (error) {
+      if (error.code === "ER_DUP_ENTRY") return fail("That quotation number is already in use.", 409);
+      throw error;
+    }
+    const [rows] = await getPool().execute("SELECT * FROM quotations WHERE id = ?", [route[1]]);
+    return json({ success: true, message: "Quotation updated successfully.", data: quotationRow(rows[0]) });
+  }
+
   const denied = requirePermission(user, method === "POST" ? "addquotation" : "getallquotation");
   if (denied) return denied;
   const pool = getPool();
@@ -700,8 +823,8 @@ async function handleQuotations(request, method, route, user, query, body) {
       await connection.execute(
         `INSERT INTO quotations
           (id, q_id, client_name, firm_name, mobile, email, address, gst_number, discount,
-           products, subtotal, gst_amount, grandtotal)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           products, terms_conditions, subtotal, gst_amount, grandtotal)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           id,
           quotationId,
@@ -713,6 +836,7 @@ async function handleQuotations(request, method, route, user, query, body) {
           body.gstNumber || null,
           body.discount ?? null,
           JSON.stringify(products),
+          JSON.stringify(normalizeQuotationTerms(body.termsConditions)),
           body.Subtotal ?? null,
           body.gstamount ?? null,
           body.grandtotal ?? null,
@@ -813,12 +937,26 @@ function quotationRow(row) {
     gstNumber: row.gst_number,
     discount: row.discount,
     products: parseJsonColumn(row.products, []),
+    termsConditions: parseJsonColumn(row.terms_conditions, { selected: [], paymentTerms: "" }),
     Subtotal: row.subtotal,
     gstamount: row.gst_amount,
     grandtotal: row.grandtotal,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+function normalizeQuotationTerms(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { selected: [], paymentTerms: "" };
+  }
+  const selected = Array.isArray(value.selected)
+    ? [...new Set(value.selected.filter((id) => typeof id === "string" && /^[a-z-]+$/.test(id)))]
+    : [];
+  const paymentTerms = typeof value.paymentTerms === "string"
+    ? value.paymentTerms.trim().slice(0, 1000)
+    : "";
+  return { selected, paymentTerms };
 }
 
 async function handleWhatsApp(request, method, route, user, body) {
@@ -858,7 +996,7 @@ async function handleWhatsApp(request, method, route, user, body) {
     if (!pdf) return fail("PDF data is required.", 400);
     const { status } = service.getStatusForUser(userId);
     if (status !== "ready") return fail(`Your WhatsApp is not connected. Status: ${status}. Please connect first.`, 503);
-    await service.sendPDFAsUser(userId, to, Buffer.from(pdf, "base64"), caption || "Please find your quotation attached.\n\n- Mahavir Hospitality");
+    await service.sendPDFAsUser(userId, to, Buffer.from(pdf, "base64"), caption || "Please find your quotation attached.\n\n- Mahaveer Hospitality");
     return json({ success: true, message: `Quotation sent to ${to} on WhatsApp.` });
   }
   if (route[0] === "sessions" && method === "GET") {

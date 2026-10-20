@@ -5,6 +5,7 @@ import { Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { generateQuotationPDF } from '../utils/pdfGenerator';
 import { useFetchProductsByIds } from '../../hooks/useProducts';
+import { DEFAULT_QUOTATION_TERMS, DEFAULT_SELECTED_QUOTATION_TERMS } from '../utils/quotationTerms';
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL_IMG || '';
 
@@ -21,6 +22,8 @@ export default function QuotationBuilder({ selectedProductsWithSizes, onComplete
   const [address, setAddress]         = useState('');
   const [gstNumber, setGstNumber]     = useState('');
   const [discount, setDiscount]       = useState(0);
+  const [selectedTerms, setSelectedTerms] = useState(DEFAULT_SELECTED_QUOTATION_TERMS);
+  const [paymentTerms, setPaymentTerms] = useState('');
   const [showColumnDialog, setShowColumnDialog] = useState(false);
 
   const [selectedColumns, setSelectedColumns] = useState({
@@ -142,6 +145,10 @@ export default function QuotationBuilder({ selectedProductsWithSizes, onComplete
       toast.error('Please add at least one product.');
       return;
     }
+    if (selectedTerms.includes('paymentTerms') && !paymentTerms.trim()) {
+      toast.error('Enter the customized payment terms or uncheck that condition.');
+      return;
+    }
     setShowColumnDialog(true);
   };
 
@@ -157,8 +164,10 @@ export default function QuotationBuilder({ selectedProductsWithSizes, onComplete
       address,
       gstNumber,
       discount,
+      termsConditions: { selected: selectedTerms, paymentTerms },
       products  : quotationProducts.map((qp) => ({
         product_id : qp.productId,
+        productName: qp.product.name,
         size       : qp.size,
         innerPack  : qp.innerPack,
         masterPack : qp.masterPack,
@@ -169,6 +178,7 @@ export default function QuotationBuilder({ selectedProductsWithSizes, onComplete
         discount   : qp.productDiscount,
         finalPrice : qp.finalPrice,
         total      : qp.innerPack * qp.quantity * qp.finalPrice,
+        gstPercentage: qp.product.gstPercentage ?? qp.product.gstPercent ?? 0,
       })),
       Subtotal  : subtotal,
       gstamount : gstAmount,
@@ -215,6 +225,7 @@ export default function QuotationBuilder({ selectedProductsWithSizes, onComplete
           gstAmount,
           grandTotal,
           createdBy      : user?.fullName || 'Unknown',
+          termsConditions: { selected: selectedTerms, paymentTerms },
         };
 
         await generateQuotationPDF(quotationForPDF, selectedColumns, 'download');
@@ -224,7 +235,6 @@ export default function QuotationBuilder({ selectedProductsWithSizes, onComplete
         onComplete();
       },
       onError: () => {
-        toast.error('Failed to save quotation');
         setIsSubmitting(false);
       },
     });
@@ -289,7 +299,7 @@ export default function QuotationBuilder({ selectedProductsWithSizes, onComplete
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-center gap-3 flex-1 min-w-0">
                       {qp.product.img ? (
-                        <img src={`${BACKEND_URL}${qp.product.img}`} alt={qp.product.name} className="w-14 h-14 object-cover rounded flex-shrink-0" />
+                        <img src={`${BACKEND_URL}${qp.product.img}`} alt={qp.product.name} className="w-14 h-14 object-contain rounded flex-shrink-0" />
                       ) : (
                         <div className="w-14 h-14 bg-muted rounded flex-shrink-0" />
                       )}
@@ -359,7 +369,7 @@ export default function QuotationBuilder({ selectedProductsWithSizes, onComplete
                       <td className="py-3 px-2">
                         <div className="flex items-center gap-2">
                           {qp.product.img ? (
-                            <img src={`${BACKEND_URL}${qp.product.img}`} alt={qp.product.name} className="w-10 h-10 object-cover rounded flex-shrink-0" />
+                            <img src={`${BACKEND_URL}${qp.product.img}`} alt={qp.product.name} className="w-10 h-10 object-contain rounded flex-shrink-0" />
                           ) : (
                             <div className="w-10 h-10 bg-muted rounded flex-shrink-0" />
                           )}
@@ -405,6 +415,64 @@ export default function QuotationBuilder({ selectedProductsWithSizes, onComplete
             <div className="flex justify-between w-full md:w-64 text-sm"><span className="text-muted-foreground">GST:</span><span className="text-foreground">₹{gstAmount.toFixed(2)}</span></div>
             <div className="flex justify-between w-full md:w-64 border-t border-border pt-2"><span className="text-foreground font-medium">Grand Total:</span><span className="text-foreground font-medium">₹{grandTotal.toFixed(2)}</span></div>
           </div>
+          <section className="mb-6 rounded-lg border border-border p-4">
+            <h3 className="mb-3 text-foreground font-medium">Terms and conditions</h3>
+            <div className="space-y-2">
+              {DEFAULT_QUOTATION_TERMS.slice(0, 5).map((term, index) => (
+                <label key={term.id} className="flex items-start gap-2 text-sm text-foreground">
+                  <input
+                    type="checkbox"
+                    checked={selectedTerms.includes(term.id)}
+                    onChange={(event) => setSelectedTerms((previous) =>
+                      event.target.checked
+                        ? [...previous, term.id]
+                        : previous.filter((id) => id !== term.id)
+                    )}
+                    className="mt-1 accent-primary"
+                  />
+                  <span>{index + 1}. {term.text}</span>
+                </label>
+              ))}
+              <div className="flex items-start gap-2 text-sm text-foreground">
+                <input
+                  type="checkbox"
+                  checked={selectedTerms.includes('paymentTerms')}
+                  onChange={(event) => setSelectedTerms((previous) =>
+                    event.target.checked
+                      ? [...previous, 'paymentTerms']
+                      : previous.filter((id) => id !== 'paymentTerms')
+                  )}
+                  className="mt-1 accent-primary"
+                />
+                <div className="flex-1">
+                  <label htmlFor="quotation-payment-terms">6. Payment terms</label>
+                  <input
+                    id="quotation-payment-terms"
+                    type="text"
+                    value={paymentTerms}
+                    onChange={(event) => setPaymentTerms(event.target.value)}
+                    placeholder="Enter customized payment terms"
+                    className={`${inputCls} mt-2`}
+                  />
+                </div>
+              </div>
+              {DEFAULT_QUOTATION_TERMS.slice(5).map((term, index) => (
+                <label key={term.id} className="flex items-start gap-2 text-sm text-foreground">
+                  <input
+                    type="checkbox"
+                    checked={selectedTerms.includes(term.id)}
+                    onChange={(event) => setSelectedTerms((previous) =>
+                      event.target.checked
+                        ? [...previous, term.id]
+                        : previous.filter((id) => id !== term.id)
+                    )}
+                    className="mt-1 accent-primary"
+                  />
+                  <span>{index + 7}. {term.text}</span>
+                </label>
+              ))}
+            </div>
+          </section>
           <div className="flex gap-3 justify-end">
             <button onClick={onCancel} className="px-6 py-2 border border-border text-foreground rounded-lg hover:bg-muted transition-all">Cancel</button>
             <button onClick={handleGenerate} disabled={isSubmitting} className="px-6 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-all disabled:opacity-60">
